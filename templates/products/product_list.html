@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Products — Anupam Bearings{% endblock %}
+
+{% block content %}
+
+<!-- ── PAGE HERO ── -->
+<section style="background:var(--gradient-hero);padding:9rem 0 4rem;position:relative;overflow:hidden;" aria-label="Products hero">
+  <div class="dot-grid"></div>
+  <div class="container" style="position:relative;z-index:1;">
+    <p class="section-label anim-fade-up" style="color:rgba(255,255,255,0.5);">Our Catalogue</p>
+    <h1 class="display-lg anim-fade-up" style="color:#fff;max-width:580px;margin-top:0.5rem;">
+      Precision Products.<br/><span class="gradient-text">Infinite Applications.</span>
+    </h1>
+    <p class="body-lg anim-fade-up" style="color:rgba(255,255,255,0.55);max-width:500px;margin-top:1.5rem;">
+      500+ genuine Timken bearing products for rolling, housing, linear motion, power transmission, and lubrication needs.
+    </p>
+  </div>
+</section>
+
+
+<!-- ── PRODUCTS MAIN ── -->
+<section class="section-pad surface-base">
+  <div class="container">
+
+    <!-- DESKTOP: Category Tabs -->
+    <div class="category-tabs anim-fade-up" id="desktop-tabs">
+      <button class="cat-tab active" data-cat="all">All Products</button>
+      {% for category in categories %}
+      <button class="cat-tab" data-cat="{{ category.slug }}">
+        {{ category.icon }} {{ category.name }}
+      </button>
+      {% endfor %}
+    </div>
+
+    <!-- DESKTOP: Products Sections -->
+    <div id="desktop-products-view">
+      {% for category in categories %}
+      <div class="products-section" data-cat="{{ category.slug }}" style="margin-bottom:var(--sp-8);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-4);">
+          <div>
+            <p class="section-label">{{ category.icon }} {{ category.name }}</p>
+            <p style="color:var(--secondary);font-size:0.875rem;max-width:500px;">{{ category.description }}</p>
+          </div>
+        </div>
+        <div class="products-grid anim-stagger-group">
+          {% for product in category.products.all %}
+          <article class="product-card anim-stagger-child anim-fade-up">
+            <div class="product-card-img">
+              {% if product.image %}
+              <img src="{{ product.image.url }}" alt="{{ product.name }}" loading="lazy"
+                   style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" />
+              {% else %}
+              <span class="product-card-icon">{{ category.icon }}</span>
+              {% endif %}
+            </div>
+            <div class="product-card-body">
+              <p class="product-card-cat">{{ category.name }}</p>
+              <h3 class="product-card-name">{{ product.name }}</h3>
+              <p class="product-card-desc">{{ product.description|truncatewords:20 }}</p>
+              <button class="product-card-cta"
+                      data-enquire="{{ product.id }}"
+                      data-name="{{ product.name }}"
+                      style="background:none;border:none;cursor:pointer;padding:0;font-family:inherit;">
+                Enquire Now →
+              </button>
+            </div>
+          </article>
+          {% empty %}
+          <p style="color:var(--secondary);grid-column:1/-1;">No products in this category yet. Run <code>python manage.py seed_data</code> to populate.</p>
+          {% endfor %}
+        </div>
+      </div>
+      {% empty %}
+      <div style="text-align:center;padding:4rem 0;color:var(--secondary);">
+        <p style="font-size:3rem;margin-bottom:1rem;">⚙️</p>
+        <h3 style="font-family:var(--font-display);margin-bottom:0.5rem;">No Products Yet</h3>
+        <p>Run <code style="background:var(--surface-container-highest);padding:2px 6px;border-radius:4px;">python manage.py seed_data</code> to populate the database.</p>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- MOBILE: Accordion -->
+    <div id="mobile-accordion" style="display:none;">
+      {% for category in categories %}
+      <div style="margin-bottom:var(--sp-2);border-radius:var(--radius-sm);overflow:hidden;">
+        <button class="accordion-trigger" style="width:100%;background:var(--surface-container-highest);border:none;padding:var(--sp-2) var(--sp-3);display:flex;align-items:center;justify-content:space-between;cursor:pointer;font-family:var(--font-display);font-size:1rem;font-weight:600;color:var(--on-surface);">
+          <span>{{ category.icon }} {{ category.name }}</span>
+          <span style="font-size:1.3rem;transition:transform 0.3s;">›</span>
+        </button>
+        <div style="max-height:0;overflow:hidden;transition:max-height 0.4s ease;background:var(--surface-container-low);">
+          <div style="padding:var(--sp-2);">
+            {% for product in category.products.all %}
+            <div style="background:var(--surface-container-highest);border-radius:var(--radius-sm);padding:var(--sp-2);margin-bottom:var(--sp-1);display:flex;align-items:flex-start;justify-content:space-between;gap:var(--sp-1);">
+              <div>
+                <h4 style="font-family:var(--font-display);font-size:0.95rem;font-weight:600;margin-bottom:0.25rem;">{{ product.name }}</h4>
+                <p style="font-size:0.8rem;color:var(--secondary);">{{ product.description|truncatewords:14 }}</p>
+              </div>
+              <button class="btn-primary" style="padding:0.5rem 0.875rem;font-size:0.75rem;white-space:nowrap;flex-shrink:0;"
+                      data-enquire="{{ product.id }}" data-name="{{ product.name }}">Enquire</button>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ── QUOTE CTA ── -->
+<section class="cta-banner">
+  <div class="container">
+    <div class="cta-banner-inner">
+      <div>
+        <h2 class="cta-title anim-slide-left">Can't find what you're<br/><span class="accent">looking for?</span></h2>
+        <p class="anim-fade-up" style="color:rgba(255,255,255,0.55);margin-top:0.75rem;">Contact our specialists — we source any bearing solution you need.</p>
+      </div>
+      <div class="anim-slide-right" style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <a href="{% url 'contact:contact' %}" class="btn-primary">Contact Specialists ›</a>
+        <a href="tel:+919884400741" class="btn-ghost btn-ghost-white">📞 +91-98844-00741</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Show/hide desktop vs mobile view
+  function checkLayout() {
+    const isMobile = window.innerWidth <= 768;
+    document.getElementById('desktop-tabs').style.display = isMobile ? 'none' : 'flex';
+    document.getElementById('desktop-products-view').style.display = isMobile ? 'none' : 'block';
+    document.getElementById('mobile-accordion').style.display = isMobile ? 'block' : 'none';
+  }
+  checkLayout();
+  window.addEventListener('resize', checkLayout);
+</script>
+{% endblock %}

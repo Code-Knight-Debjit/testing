@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}About Us — Anupam Bearings{% endblock %}
+
+{% block content %}
+
+<!-- ── PAGE HERO ── -->
+<section style="background:var(--gradient-hero);padding:10rem 0 5rem;position:relative;overflow:hidden;" aria-label="About hero">
+  <div class="dot-grid"></div>
+  <div class="container" style="position:relative;z-index:1;">
+    <p class="section-label anim-fade-up" style="color:rgba(255,255,255,0.5);">Who We Are</p>
+    <h1 class="display-lg anim-fade-up" style="color:#fff;max-width:640px;margin-top:0.5rem;">
+      Driving India's Industrial<br/><span class="gradient-text">Future Forward</span>
+    </h1>
+    <p class="body-lg anim-fade-up" style="color:rgba(255,255,255,0.55);max-width:520px;margin-top:1.5rem;">
+      From a powerful Timken partnership to on-the-ground industrial expertise — Anupam Bearings is built on integrity, precision, and a relentless pursuit of excellence.
+    </p>
+  </div>
+</section>
+
+<!-- ── LEADERSHIP ── -->
+<section class="section-pad surface-base">
+  <div class="container">
+    <div class="about-split" style="align-items:center;">
+      <div class="anim-slide-left">
+        <p class="section-label">Our Leadership</p>
+        <h2 class="headline-md">Visionary at the Helm</h2>
+        <p class="body-lg" style="color:var(--secondary);margin-top:1rem;margin-bottom:1rem;">
+          Under the leadership of <strong>Mr. Anant Kumar Singh</strong>, Founder and Mentor, Anupam Bearings has secured a significant share in the national market. His deep industry expertise, integrity, and unwavering commitment to quality continue to inspire the team.
+        </p>
+        <p class="body-lg" style="color:var(--secondary);margin-bottom:1.5rem;">
+          Together with Timken, we are committed to driving India's industrial growth — one bearing at a time.
+        </p>
+        <div class="partner-badge">✦ Timken Certified Since 2023</div>
+      </div>
+      <div class="anim-slide-right">
+        <img
+          src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&q=80"
+          alt="Industrial leadership"
+          style="width:100%;border-radius:var(--radius-sm);object-fit:cover;aspect-ratio:3/4;max-height:520px;"
+          loading="lazy"
+        />
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ── WHAT WE DO ── -->
+<section class="section-pad surface-low">
+  <div class="container">
+    <div style="text-align:center;max-width:560px;margin:0 auto var(--sp-6);">
+      <p class="section-label anim-fade-up" style="justify-content:center;">Our Services</p>
+      <h2 class="headline-md anim-fade-up">Putting the Extra in<br/><span class="gradient-text">Every Mile</span></h2>
+    </div>
+    <div class="features-grid anim-stagger-group">
+      {% for item in "123456789" %}
+      <div class="feature-card anim-stagger-child anim-fade-up">
+        {% if forloop.counter == 1 %}
+        <div class="feature-icon">🗺️</div>
+        <h3 class="feature-title">Customer Mapping</h3>
+        <p class="feature-desc">Mapping customer requirements to provide tailored bearing and motion solutions.</p>
+        {% elif forloop.counter == 2 %}
+        <div class="feature-icon">🎓</div>
+        <h3 class="feature-title">Training Programmes</h3>
+        <p class="feature-desc">Organising training programmes, seminars and bearing clinics to address specific problems.</p>
+        {% elif forloop.counter == 3 %}
+        <div class="feature-icon">🔄</div>
+        <h3 class="feature-title">Preventive Maintenance</h3>
+        <p class="feature-desc">Preventive and pro-active maintenance to keep your machinery running at peak performance.</p>
+        {% elif forloop.counter == 4 %}
+        <div class="feature-icon">🔍</div>
+        <h3 class="feature-title">Pre-Dispatch Inspection</h3>
+        <p class="feature-desc">Rigorous quality inspection service before every dispatch to ensure genuine parts.</p>
+        {% elif forloop.counter == 5 %}
+        <div class="feature-icon">🛠️</div>
+        <h3 class="feature-title">Mounting Assistance</h3>
+        <p class="feature-desc">Expert assistance in bearing mounting and maintenance for optimal performance.</p>
+        {% elif forloop.counter == 6 %}
+        <div class="feature-icon">⚡</div>
+        <h3 class="feature-title">JIT Deliveries</h3>
+        <p class="feature-desc">Just-in-time deliveries that minimize your inventory holding and production downtime.</p>
+        {% elif forloop.counter == 7 %}
+        <div class="feature-icon">📋</div>
+        <h3 class="feature-title">Annual Rate Contracts</h3>
+        <p class="feature-desc">Flexible annual rate contracts for predictable pricing and assured supply continuity.</p>
+        {% elif forloop.counter == 8 %}
+        <div class="feature-icon">🤝</div>
+        <h3 class="feature-title">Annual Service Contracts</h3>
+        <p class="feature-desc">Comprehensive annual service contracts for complete peace of mind and uninterrupted operations.</p>
+        {% elif forloop.counter == 9 %}
+        <div class="feature-icon">🏦</div>
+        <h3 class="feature-title">Bearing Banks</h3>
+        <p class="feature-desc">Dedicated bearing bank solutions to ensure you always have critical inventory on hand.</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+
+<!-- ── TIMKEN HISTORY TIMELINE ── -->
+<section class="section-pad surface-base">
+  <div class="container">
+    <div class="about-split" style="gap:var(--sp-8);">
+      <div class="anim-slide-left">
+        <p class="section-label">Our Partner's Legacy</p>
+        <h2 class="headline-md">The Timken <span class="gradient-text">Story</span></h2>
+        <p class="body-lg" style="color:var(--secondary);margin-top:1rem;margin-bottom:2rem;">
+          Over 125 years of bearing innovation — from horse-drawn wagons to spacecraft. Anupam Bearings is proud to carry this legacy to every corner of India.
+        </p>
+        <a href="{% url 'products:list' %}" class="btn-primary">Explore Our Products ›</a>
+      </div>
+      <div class="anim-slide-right">
+        <div class="timeline">
+          <div class="timeline-item anim-fade-up">
+            <div class="timeline-year">1890s</div>
+            <div class="timeline-title">The Beginning</div>
+            <div class="timeline-desc">Henry Timken designs a tapered bearing to help heavy freight wagons make sharp turns — solving a real-world problem that changed industry forever.</div>
+          </div>
+          <div class="timeline-item anim-fade-up">
+            <div class="timeline-year">1899</div>
+            <div class="timeline-title">Clear Vision</div>
+            <div class="timeline-desc">The Timken Roller Bearing and Axle Company is established. The patented tapered roller bearing becomes the bedrock of the company.</div>
+          </div>
+          <div class="timeline-item anim-fade-up">
+            <div class="timeline-year">1920s</div>
+            <div class="timeline-title">Industrial Focus</div>
+            <div class="timeline-desc">Timken supplies bearings to 80% of America's automobiles and begins expansion to new markets across industrial machinery.</div>
+          </div>
+          <div class="timeline-item anim-fade-up">
+            <div class="timeline-year">1950s</div>
+            <div class="timeline-title">Advanced Processes</div>
+            <div class="timeline-desc">Automated, high-volume bearing production drives productivity. Timken continues to accelerate product development and line expansion.</div>
+          </div>
+          <div class="timeline-item anim-fade-up">
+            <div class="timeline-year">2023</div>
+            <div class="timeline-title">Anupam Partnership</div>
+            <div class="timeline-desc">Anupam Bearings begins its Timken partnership — bringing world-class bearing solutions to India's industrial heartland.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ── TIMKEN INDIA FOOTPRINT ── -->
+<section class="section-pad surface-low">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:var(--sp-6);">
+      <p class="section-label anim-fade-up" style="justify-content:center;">Timken India</p>
+      <h2 class="headline-md anim-fade-up">Manufacturing<br/><span class="gradient-text">Footprint</span></h2>
+    </div>
+    <div class="products-grid anim-stagger-group" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));">
+      {% for loc in "1234" %}
+      <div class="feature-card anim-stagger-child anim-fade-up" style="text-align:left;">
+        {% if forloop.counter == 1 %}
+        <div class="feature-icon">📍</div>
+        <h3 class="feature-title">Jamshedpur</h3>
+        <p class="feature-desc">0–8" Tapers, Rail Cartridge bearings. Rail and large bore bearing repair. Timken India HQ.</p>
+        {% elif forloop.counter == 2 %}
+        <div class="feature-icon">📍</div>
+        <h3 class="feature-title">Bangalore</h3>
+        <p class="feature-desc">Global Product Technology, Manufacturing Technology, Shared Services &amp; IT support. 8–24" TRBs &amp; High Precision CRBs.</p>
+        {% elif forloop.counter == 3 %}
+        <div class="feature-icon">📍</div>
+        <h3 class="feature-title">Chennai</h3>
+        <p class="feature-desc">0–8" TRB and CRB. Located in Special Economic Zone (SEZ). TH &amp; CC Capabilities.</p>
+        {% elif forloop.counter == 4 %}
+        <div class="feature-icon">📍</div>
+        <h3 class="feature-title">Bharuch</h3>
+        <p class="feature-desc">TRB, SRB and CRB for Industrial application 10"–32". Slewing bearing from 12"–100".</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+
+<!-- ── CTA ── -->
+<section class="cta-banner">
+  <div class="container">
+    <div class="cta-banner-inner">
+      <div>
+        <h2 class="cta-title anim-slide-left">Partner with us for<br/><span class="accent">precision motion solutions.</span></h2>
+      </div>
+      <div class="anim-slide-right" style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <a href="{% url 'contact:contact' %}" class="btn-primary">Contact Us ›</a>
+        <a href="{% url 'products:list' %}" class="btn-ghost btn-ghost-white">Browse Products</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

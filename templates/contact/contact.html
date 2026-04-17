@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Contact Us — Anupam Bearings{% endblock %}
+
+{% block content %}
+
+<!-- ── HERO ── -->
+<section style="background:var(--gradient-hero);padding:9rem 0 4rem;position:relative;overflow:hidden;" aria-label="Contact hero">
+  <div class="dot-grid"></div>
+  <div class="container" style="position:relative;z-index:1;">
+    <p class="section-label anim-fade-up" style="color:rgba(255,255,255,0.5);">Get In Touch</p>
+    <h1 class="display-lg anim-fade-up" style="color:#fff;margin-top:0.5rem;">
+      Let's Start a<br/><span class="gradient-text">Conversation</span>
+    </h1>
+    <p class="body-lg anim-fade-up" style="color:rgba(255,255,255,0.55);max-width:480px;margin-top:1.5rem;">
+      Whether it's a product enquiry, a technical question, or a partnership opportunity — our team is ready to help.
+    </p>
+  </div>
+</section>
+
+
+<!-- ── CONTACT GRID ── -->
+<section class="section-pad surface-base">
+  <div class="container">
+    <div class="contact-grid">
+
+      <!-- FORM -->
+      <div class="anim-slide-left">
+        <p class="section-label">Send a Message</p>
+        <h2 class="headline-md" style="margin-bottom:var(--sp-4);">How can we<br/><span class="gradient-text">help you?</span></h2>
+
+        <form id="contact-form" novalidate>
+          {% csrf_token %}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2);">
+            <div class="form-group">
+              <label class="form-label" for="contact-name">Name *</label>
+              <input class="form-input" type="text" id="contact-name" name="name" required placeholder="John Doe" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="contact-phone">Phone</label>
+              <input class="form-input" type="tel" id="contact-phone" name="phone" placeholder="+91 98000 00000" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="contact-email">Email *</label>
+            <input class="form-input" type="email" id="contact-email" name="email" required placeholder="john@company.com" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="contact-subject">Subject *</label>
+            <input class="form-input" type="text" id="contact-subject" name="subject" required placeholder="Product enquiry / Technical query / Other" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="contact-message">Message *</label>
+            <textarea class="form-input" id="contact-message" name="message" required
+                      placeholder="Tell us about your requirements, industry, and how we can help…"
+                      style="min-height:160px;"></textarea>
+          </div>
+          <button type="submit" class="btn-primary" style="width:100%;justify-content:center;padding:1rem;">
+            Send Message ›
+          </button>
+        </form>
+      </div>
+
+      <!-- INFO -->
+      <div class="anim-slide-right">
+        <div class="contact-info-card">
+          <div class="contact-loc">
+            <div class="contact-loc-city">📍 Bengaluru Office</div>
+            <p>No. 128, Jigani Link Road, Bommasandra<br/>Industrial Area, Bengaluru – 560 099, Karnataka</p>
+            <p style="margin-top:0.75rem;">
+              📞 <a href="tel:+919884400741">+91-98844-00741</a>
+            </p>
+            <p>
+              ✉ <a href="mailto:sales@anupambearings.com">sales@anupambearings.com</a>
+            </p>
+            <p style="margin-top:0.5rem;font-size:0.8rem;color:rgba(255,255,255,0.35);">
+              Also: +91-96771-13860 &nbsp;·&nbsp; +91-98400-88509
+            </p>
+          </div>
+
+          <div class="contact-loc">
+            <div class="contact-loc-city">📍 Chennai Office</div>
+            <p>No. 3 (Old No.2) Katchaleeswarar Pagoda Lane,<br/>Parrys, Chennai – 600001, Tamil Nadu</p>
+            <p style="margin-top:0.75rem;">
+              📞 <a href="tel:04446912265">044-4691-2265</a> &nbsp;/&nbsp; <a href="tel:04447791419">044-4779-1419</a>
+            </p>
+            <p>
+              ✉ <a href="mailto:info@anupambearings.com">info@anupambearings.com</a>
+            </p>
+            <p style="margin-top:0.5rem;font-size:0.8rem;color:rgba(255,255,255,0.35);">
+              Also: +91-98400-88509 &nbsp;·&nbsp; +91-98844-00509
+            </p>
+          </div>
+
+          <div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:var(--sp-3);margin-top:var(--sp-3);">
+            <div class="contact-loc-city" style="font-size:0.85rem;margin-bottom:0.5rem;">🌐 Online</div>
+            <p><a href="http://www.anupambearings.com" target="_blank" rel="noopener">www.anupambearings.com</a></p>
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2);margin-top:var(--sp-3);">
+          <a href="tel:+919884400741" class="btn-primary" style="justify-content:center;text-decoration:none;">📞 Call Bengaluru</a>
+          <a href="tel:04446912265" class="btn-primary" style="justify-content:center;text-decoration:none;">📞 Call Chennai</a>
+          <a href="mailto:sales@anupambearings.com" class="btn-ghost" style="justify-content:center;text-decoration:none;grid-column:1/-1;">✉ Email Sales Team</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ── MAPS ── -->
+<section class="section-pad surface-low" aria-label="Office locations">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:var(--sp-6);">
+      <p class="section-label anim-fade-up" style="justify-content:center;">Find Us</p>
+      <h2 class="headline-md anim-fade-up">Our <span class="gradient-text">Locations</span></h2>
+    </div>
+    <div class="maps-grid anim-stagger-group">
+      <div class="anim-stagger-child anim-fade-up">
+        <div class="map-label" style="padding:var(--sp-2) var(--sp-2) 0;background:var(--surface-container-highest);border-radius:var(--radius-sm) var(--radius-sm) 0 0;">
+          <p class="map-label-text">📍 Bengaluru — Bommasandra Industrial Area</p>
+        </div>
+        <div class="map-wrap" style="border-radius:0 0 var(--radius-sm) var(--radius-sm);">
+          <iframe
+            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3889.3!2d77.6977!3d12.8276!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bae6b5e1f7f3c5b%3A0x0!2sBommasandra+Industrial+Area%2C+Bengaluru%2C+Karnataka!5e0!3m2!1sen!2sin!4v1"
+            allowfullscreen=""
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+            title="Bengaluru Office Location"
+          ></iframe>
+        </div>
+      </div>
+      <div class="anim-stagger-child anim-fade-up">
+        <div class="map-label" style="padding:var(--sp-2) var(--sp-2) 0;background:var(--surface-container-highest);border-radius:var(--radius-sm) var(--radius-sm) 0 0;">
+          <p class="map-label-text">📍 Chennai — Parrys, George Town</p>
+        </div>
+        <div class="map-wrap" style="border-radius:0 0 var(--radius-sm) var(--radius-sm);">
+          <iframe
+            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3886.5!2d80.2901!3d13.0878!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a5265ea4f7d3361%3A0x0!2sParrys%2C+Chennai%2C+Tamil+Nadu!5e0!3m2!1sen!2sin!4v1"
+            allowfullscreen=""
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+            title="Chennai Office Location"
+          ></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

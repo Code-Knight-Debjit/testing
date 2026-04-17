@@ -1,0 +1,342 @@
+{% extends "dashboard/base.html" %}
+{% block title %}RAG System{% endblock %}
+{% block page_title %}RAG System{% endblock %}
+{% block breadcrumb %}<span class="topbar-breadcrumb">/ AI System</span>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-header-left">
+    <h1>RAG System Status</h1>
+    <p>Retrieval-Augmented Generation pipeline — FAISS · Ollama · Redis</p>
+  </div>
+  <div style="display:flex;gap:.75rem;">
+    <a href="/api/chat/health/" target="_blank" class="btn btn-ghost btn-sm">↗ Raw Health JSON</a>
+    <button class="btn btn-primary" onclick="runHealthCheck()">🔄 Refresh Status</button>
+  </div>
+</div>
+
+<!-- ── STATUS CARDS ── -->
+<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:1.5rem;">
+
+  <!-- FAISS -->
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value" style="font-size:1.4rem;">
+        {% if index_stats.exists %}{{ index_stats.total_vectors }}{% else %}0{% endif %}
+      </div>
+      <div class="stat-card-label">Vectors in FAISS Index</div>
+      {% if index_stats.exists %}
+      <span class="stat-card-badge badge-ok">✓ Index ready</span>
+      {% else %}
+      <span class="stat-card-badge badge-new">⚠ Not built</span>
+      {% endif %}
+    </div>
+    <div class="stat-card-icon orange" style="font-size:1.6rem;">🗃</div>
+  </div>
+
+  <!-- Ollama -->
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value" style="font-size:1.4rem;">
+        {% if ollama_health.healthy %}Online{% else %}Offline{% endif %}
+      </div>
+      <div class="stat-card-label">LLM (Ollama) — {{ ollama_health.model }}</div>
+      {% if ollama_health.healthy %}
+      <span class="stat-card-badge badge-ok">✓ Connected</span>
+      {% else %}
+      <span class="stat-card-badge badge-new">✗ Unreachable</span>
+      {% endif %}
+    </div>
+    <div class="stat-card-icon blue" style="font-size:1.6rem;">🤖</div>
+  </div>
+
+  <!-- Redis -->
+  <div class="stat-card">
+    <div>
+      <div class="stat-card-value" style="font-size:1.4rem;">
+        {% if redis_ok %}Online{% else %}Offline{% endif %}
+      </div>
+      <div class="stat-card-label">Redis Cache + Celery Broker</div>
+      {% if redis_ok %}
+      <span class="stat-card-badge badge-ok">✓ Connected</span>
+      {% else %}
+      <span class="stat-card-badge badge-new">✗ Unreachable</span>
+      {% endif %}
+    </div>
+    <div class="stat-card-icon purple" style="font-size:1.6rem;">⚡</div>
+  </div>
+</div>
+
+<!-- ── MAIN GRID ── -->
+<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:1.25rem;align-items:start;">
+
+  <!-- Left: Index Details + Setup Guide -->
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+    <!-- FAISS Index Details -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🗃 FAISS Vector Index</span>
+        {% if index_stats.exists %}
+        <span class="pill badge-ok">{{ index_stats.total_vectors }} vectors</span>
+        {% endif %}
+      </div>
+      <div class="card-pad">
+        {% if index_stats.exists %}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+          <div style="background:var(--surface);padding:.875rem;border-radius:8px;">
+            <div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.25rem;">Total Vectors</div>
+            <div style="font-family:var(--font-d);font-size:1.5rem;font-weight:700;">{{ index_stats.total_vectors }}</div>
+          </div>
+          <div style="background:var(--surface);padding:.875rem;border-radius:8px;">
+            <div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.25rem;">Documents</div>
+            <div style="font-family:var(--font-d);font-size:1.5rem;font-weight:700;">{{ index_stats.total_documents }}</div>
+          </div>
+        </div>
+        {% if index_stats.sources %}
+        <div style="margin-bottom:1rem;">
+          <div class="label-sm" style="color:var(--muted);margin-bottom:.5rem;">Sources in Index</div>
+          <div style="display:flex;flex-wrap:wrap;gap:.4rem;">
+            {% for src in index_stats.sources %}
+            <span class="pill" style="background:rgba(255,106,0,.1);color:var(--orange-dk);">{{ src }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        <div style="background:var(--surface);padding:.75rem;border-radius:8px;font-size:.78rem;color:var(--muted);word-break:break-all;">
+          <strong>Index path:</strong> {{ index_stats.index_path }}
+        </div>
+        {% else %}
+        <div style="background:rgba(255,106,0,.05);border:1px dashed rgba(255,106,0,.25);border-radius:8px;padding:1.25rem;text-align:center;">
+          <div style="font-size:2rem;margin-bottom:.5rem;">🗃</div>
+          <div style="font-weight:700;margin-bottom:.4rem;">Index Not Built Yet</div>
+          <div style="font-size:.83rem;color:var(--muted);margin-bottom:1rem;">Run the ingestion command to build the FAISS index from your knowledge base.</div>
+          <div style="background:var(--sidebar-bg);color:#4ade80;font-family:monospace;font-size:.8rem;padding:.875rem;border-radius:6px;text-align:left;">
+            python manage.py ingest_rag_data
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Knowledge Base Files -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📂 Knowledge Base Files</span>
+        <a href="#" class="btn btn-ghost btn-sm" onclick="showAddDocModal()">+ Add Document</a>
+      </div>
+      <div style="padding:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:.875rem 1.5rem;border-bottom:1px solid var(--border);">
+          <div class="prod-td">
+            <div style="width:36px;height:36px;border-radius:8px;background:rgba(255,106,0,.1);display:flex;align-items:center;justify-content:center;font-size:1rem;">📄</div>
+            <div>
+              <div class="td-name" style="font-size:.83rem;">01_company_info.json</div>
+              <div class="td-sub">Company details, contacts, offices, services</div>
+            </div>
+          </div>
+          <span class="pill badge-ok">6 docs</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:.875rem 1.5rem;border-bottom:1px solid var(--border);">
+          <div class="prod-td">
+            <div style="width:36px;height:36px;border-radius:8px;background:rgba(255,106,0,.1);display:flex;align-items:center;justify-content:center;font-size:1rem;">📄</div>
+            <div>
+              <div class="td-name" style="font-size:.83rem;">02_rolling_bearings.json</div>
+              <div class="td-sub">8 rolling bearing product types with specs</div>
+            </div>
+          </div>
+          <span class="pill badge-ok">8 docs</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:.875rem 1.5rem;border-bottom:1px solid var(--border);">
+          <div class="prod-td">
+            <div style="width:36px;height:36px;border-radius:8px;background:rgba(255,106,0,.1);display:flex;align-items:center;justify-content:center;font-size:1rem;">📄</div>
+            <div>
+              <div class="td-name" style="font-size:.83rem;">03_products_detailed.json</div>
+              <div class="td-sub">Housings, linear motion, power transmission, lubrication</div>
+            </div>
+          </div>
+          <span class="pill badge-ok">14 docs</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:.875rem 1.5rem;">
+          <div class="prod-td">
+            <div style="width:36px;height:36px;border-radius:8px;background:rgba(255,106,0,.1);display:flex;align-items:center;justify-content:center;font-size:1rem;">📄</div>
+            <div>
+              <div class="td-name" style="font-size:.83rem;">04_faq_technical.json</div>
+              <div class="td-sub">Selection guide, installation, failure analysis, FAQs</div>
+            </div>
+          </div>
+          <span class="pill badge-ok">10 docs</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Commands + Ollama info -->
+  <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+    <!-- Quick Commands -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">⚡ Management Commands</span></div>
+      <div class="card-pad" style="display:flex;flex-direction:column;gap:.75rem;">
+
+        {% for cmd in commands %}{% empty %}
+        <div style="display:flex;flex-direction:column;gap:.5rem;">
+          <div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Build Index (first run)</div>
+          <div style="background:var(--sidebar-bg);color:#4ade80;font-family:monospace;font-size:.78rem;padding:.75rem 1rem;border-radius:6px;position:relative;">
+            python manage.py ingest_rag_data
+            <button onclick="copyCmd(this)" data-cmd="python manage.py ingest_rag_data" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.1);border:none;color:#fff;font-size:.65rem;padding:2px 6px;border-radius:4px;cursor:pointer;">copy</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.5rem;">
+          <div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Rebuild Index + Include Products DB</div>
+          <div style="background:var(--sidebar-bg);color:#4ade80;font-family:monospace;font-size:.78rem;padding:.75rem 1rem;border-radius:6px;position:relative;">
+            python manage.py ingest_rag_data --rebuild --also-seed-products
+            <button onclick="copyCmd(this)" data-cmd="python manage.py ingest_rag_data --rebuild --also-seed-products" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.1);border:none;color:#fff;font-size:.65rem;padding:2px 6px;border-radius:4px;cursor:pointer;">copy</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.5rem;">
+          <div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Add Single File (append mode)</div>
+          <div style="background:var(--sidebar-bg);color:#4ade80;font-family:monospace;font-size:.78rem;padding:.75rem 1rem;border-radius:6px;position:relative;">
+            python manage.py ingest_rag_data --file data/knowledge_base/new.json
+            <button onclick="copyCmd(this)" data-cmd="python manage.py ingest_rag_data --file data/knowledge_base/new.json" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.1);border:none;color:#fff;font-size:.65rem;padding:2px 6px;border-radius:4px;cursor:pointer;">copy</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.5rem;">
+          <div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Check Index Stats</div>
+          <div style="background:var(--sidebar-bg);color:#4ade80;font-family:monospace;font-size:.78rem;padding:.75rem 1rem;border-radius:6px;position:relative;">
+            python manage.py ingest_rag_data --stats
+            <button onclick="copyCmd(this)" data-cmd="python manage.py ingest_rag_data --stats" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.1);border:none;color:#fff;font-size:.65rem;padding:2px 6px;border-radius:4px;cursor:pointer;">copy</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.5rem;">
+          <div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Start Celery Worker</div>
+          <div style="background:var(--sidebar-bg);color:#60a5fa;font-family:monospace;font-size:.78rem;padding:.75rem 1rem;border-radius:6px;position:relative;">
+            celery -A anupam_bearings worker --loglevel=info
+            <button onclick="copyCmd(this)" data-cmd="celery -A anupam_bearings worker --loglevel=info" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.1);border:none;color:#fff;font-size:.65rem;padding:2px 6px;border-radius:4px;cursor:pointer;">copy</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Ollama Status -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🤖 Ollama LLM</span>
+        {% if ollama_health.healthy %}
+        <span class="pill badge-ok">Online</span>
+        {% else %}
+        <span class="pill pill-unread">Offline</span>
+        {% endif %}
+      </div>
+      <div class="card-pad">
+        <div style="display:flex;flex-direction:column;gap:.75rem;">
+          <div style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:.83rem;color:var(--muted);">Active Model</span>
+            <span style="font-family:monospace;font-size:.83rem;font-weight:600;">{{ ollama_health.model }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:.83rem;color:var(--muted);">Model Available</span>
+            <span style="font-size:.83rem;">{% if ollama_health.model_available %}✓ Yes{% else %}✗ Not pulled{% endif %}</span>
+          </div>
+          {% if ollama_health.available_models %}
+          <div style="padding:.5rem 0;">
+            <div style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.5rem;">Available Models</div>
+            <div style="display:flex;flex-wrap:wrap;gap:.4rem;">
+              {% for m in ollama_health.available_models %}
+              <span class="pill" style="background:var(--surface);color:var(--on);font-family:monospace;font-size:.72rem;">{{ m }}</span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+          {% if ollama_health.error %}
+          <div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:8px;padding:.75rem;font-size:.8rem;color:#dc2626;">
+            ⚠ {{ ollama_health.error }}
+          </div>
+          <div style="background:var(--sidebar-bg);color:#4ade80;font-family:monospace;font-size:.75rem;padding:.75rem;border-radius:6px;">
+            # Install &amp; start Ollama:<br>
+            curl -fsSL https://ollama.ai/install.sh | sh<br>
+            ollama pull llama3<br>
+            ollama serve
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Model Swap Guide -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">🔀 Swap LLM Model</span></div>
+      <div class="card-pad">
+        <p style="font-size:.83rem;color:var(--muted);margin-bottom:1rem;">Change <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">OLLAMA_MODEL</code> in your <code style="background:var(--surface);padding:1px 5px;border-radius:4px;">.env</code> file, pull the model, and restart.</p>
+        <div style="display:flex;flex-direction:column;gap:.4rem;">
+          {% for m in llm_models %}
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:.5rem .75rem;background:var(--surface);border-radius:6px;">
+            <code style="font-size:.8rem;">{{ m.name }}</code>
+            <div style="display:flex;gap:.4rem;align-items:center;">
+              {% if m.badge %}<span class="pill {{ m.badge_class }}" style="font-size:.65rem;">{{ m.badge }}</span>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Document Modal -->
+<div class="dash-modal-overlay" id="add-doc-modal">
+  <div class="dash-modal">
+    <button class="dash-modal-close" onclick="document.getElementById('add-doc-modal').classList.remove('open')">✕</button>
+    <div class="dash-modal-title">📄 Add New Knowledge Document</div>
+    <p style="font-size:.83rem;color:var(--muted);margin-bottom:1.25rem;">Create a new JSON file in <code>data/knowledge_base/</code> with this format, then run the ingestion command.</p>
+    <div style="background:var(--sidebar-bg);color:#e2e8f0;font-family:monospace;font-size:.78rem;padding:1rem;border-radius:8px;white-space:pre;overflow-x:auto;">{
+  "title": "Your Document Title",
+  "content": "Full text content here...",
+  "metadata": {
+    "source": "manual/catalogue/faq",
+    "tags": ["product", "bearing", "faq"]
+  }
+}</div>
+    <div style="margin-top:1.25rem;background:var(--sidebar-bg);color:#4ade80;font-family:monospace;font-size:.78rem;padding:.875rem;border-radius:8px;">
+      # After adding the file:<br>
+      python manage.py ingest_rag_data --file data/knowledge_base/your_file.json
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function runHealthCheck() {
+  try {
+    const res = await fetch('/api/chat/health/');
+    const data = await res.json();
+    showToast(
+      data.overall === 'healthy'
+        ? 'All systems healthy ✓'
+        : `System ${data.overall} — check details`,
+      data.overall === 'healthy' ? 'success' : 'error'
+    );
+    setTimeout(() => location.reload(), 1500);
+  } catch (e) {
+    showToast('Health check failed', 'error');
+  }
+}
+
+function showAddDocModal() {
+  document.getElementById('add-doc-modal').classList.add('open');
+}
+document.getElementById('add-doc-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+
+function copyCmd(btn) {
+  navigator.clipboard.writeText(btn.dataset.cmd).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'copied!';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+</script>
+{% endblock %}
