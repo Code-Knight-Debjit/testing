@@ -30,8 +30,6 @@ x-django-env: &django-env
     REDIS_URL:   redis://redis:6379/0
     OLLAMA_URL:  http://ollama:11434/api/generate
     DEBUG:       "False"
-    REDIS_HOST:  "redis"
-    REDIS_PORT:  6379
   depends_on:
     postgres:
       condition: service_healthy
