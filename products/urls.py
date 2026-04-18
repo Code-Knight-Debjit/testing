@@ -3,6 +3,8 @@ from . import views
 
 app_name = 'products'
 urlpatterns = [
-    path('', views.product_list, name='list'),
-    path('enquire/', views.enquire, name='enquire'),
+    path('',                   views.product_list,       name='list'),
+    path('enquire/',           views.enquire,            name='enquire'),
+    path('search/',            views.product_search_api, name='search'),
+    path('<slug:slug>/',       views.product_detail,     name='detail'),
 ]

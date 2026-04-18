@@ -1,261 +1,232 @@
 """
-chatbot/views.py
-────────────────
-RAG-powered chat API endpoints.
-
-Endpoints:
-  POST /api/chat/              → sync mode (waits for LLM, good for dev)
-  POST /api/chat/async/        → async mode (returns task_id immediately)
-  GET  /api/chat/result/<id>/  → poll for async result
-  GET  /api/chat/health/       → Ollama + FAISS health check
-  GET  /api/chat/stats/        → RAG index statistics
+chatbot/views.py  — RAG-powered chat with async polling + rate limiting + validation
 """
-
-import json
-import uuid
-import logging
-
-from django.http import JsonResponse
+import json, uuid, logging
+from django.http      import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
-from django.conf import settings
+from django.conf      import settings
 from django.core.cache import cache
 
-from contact.models import ChatMessage
+from core.validators import validate_chat
+from contact.models  import ChatMessage
 
 logger = logging.getLogger(__name__)
 
-# ── Sync timeout — if RAG pipeline takes longer, return error
-SYNC_TIMEOUT = 60  # seconds
+SYNC_TIMEOUT = 60
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SYNCHRONOUS ENDPOINT (existing /api/chat/ — backward compatible)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── helpers ────────────────────────────────────────────────────────────────
+
+def _get_or_create_session(request):
+    sid = request.session.get('chat_session_id')
+    if not sid:
+        sid = str(uuid.uuid4())
+        request.session['chat_session_id'] = sid
+    return sid
+
+
+def _rate_key(request):
+    """Per-IP rate-limit key (falls back to session if IP unknown)."""
+    ip = (
+        request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+        or request.META.get('REMOTE_ADDR', 'unknown')
+    )
+    return f'chat_rl:{ip}'
+
+
+def _check_rate_limit(request, limit=20, window=60):
+    """
+    Simple Redis-backed rate limiter: max `limit` requests per `window` seconds.
+    Returns True if limit exceeded.
+    """
+    key   = _rate_key(request)
+    count = cache.get(key, 0)
+    if count >= limit:
+        return True
+    cache.set(key, count + 1, timeout=window)
+    return False
+
+
+# ── SYNC endpoint (backward-compatible — frontend currently uses this) ──────
 
 @csrf_exempt
 @require_POST
 def chat(request):
     """
-    Synchronous RAG chat endpoint.
-    Replaces the old Ollama-only chatbot/views.py chat() function.
-
-    Request JSON:
-        {"message": "...", "history": [...]}
-
-    Response JSON:
-        {"success": bool, "reply": str, "sources": [...], "cached": bool}
-
-    Backward compatible: same URL (/api/chat/), same request/response shape.
-    Now upgraded with: FAISS retrieval → structured prompt → Ollama → Redis cache.
+    POST /api/chat/
+    Synchronous RAG chat with:
+      • Rate limit: 20 req / 60 s per IP
+      • Input validation
+      • Redis query caching
+      • FAISS retrieval (if index exists)
+      • Ollama LLM
+      • DB persistence
     """
+    # Rate limit
+    if _check_rate_limit(request, limit=20, window=60):
+        return JsonResponse(
+            {'success': False, 'reply': 'Too many requests. Please wait a moment.'},
+            status=429,
+        )
+
     try:
-        data         = json.loads(request.body)
-        user_message = data.get("message", "").strip()
-        history      = data.get("history", [])
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'reply': 'Invalid JSON payload.'}, status=400)
 
-        if not user_message:
-            return JsonResponse(
-                {"success": False, "reply": "Please enter a message."},
-                status=400,
-            )
+    cleaned, errors = validate_chat(data)
+    if errors:
+        first_err = next(iter(errors.values()))
+        return JsonResponse({'success': False, 'reply': first_err, 'errors': errors}, status=400)
 
-        # Get or create session ID
-        session_id = request.session.get("chat_session_id")
-        if not session_id:
-            session_id = str(uuid.uuid4())
-            request.session["chat_session_id"] = session_id
+    session_id = _get_or_create_session(request)
 
-        # ── Run the full RAG pipeline inline (synchronous)
-        from chatbot.tasks import run_rag_pipeline
+    from chatbot.tasks import run_rag_pipeline
+    try:
         result = run_rag_pipeline(
-            query=user_message,
-            history=history,
+            query=cleaned['message'],
+            history=cleaned['history'],
             session_id=session_id,
         )
-
-        return JsonResponse({
-            "success": True,
-            "reply":        result["reply"],
-            "sources":      result.get("sources", []),
-            "cached":       result.get("cached", False),
-            "chunks_found": result.get("chunks_found", 0),
-        })
-
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {"success": False, "reply": "Invalid request format."},
-            status=400,
-        )
     except Exception as e:
-        logger.error(f"Chat endpoint error: {e}", exc_info=True)
-        return JsonResponse(
-            {
-                "success": False,
-                "reply": (
-                    "I encountered an error. Please contact us at "
-                    "info@anupambearings.com or call +91-98844-00741."
-                ),
-            },
-            status=500,
-        )
+        logger.error(f'run_rag_pipeline failed: {e}', exc_info=True)
+        result = {
+            'reply': (
+                'I encountered an error. Please contact us at '
+                'info@anupambearings.com or call +91-98844-00741.'
+            ),
+            'sources': [], 'cached': False, 'chunks_found': 0,
+        }
+
+    return JsonResponse({
+        'success':      True,
+        'reply':        result['reply'],
+        'sources':      result.get('sources', []),
+        'cached':       result.get('cached', False),
+        'chunks_found': result.get('chunks_found', 0),
+    })
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ASYNCHRONOUS ENDPOINT (non-blocking — returns task_id immediately)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── ASYNC endpoint — enqueue Celery task, return task_id immediately ─────────
 
 @csrf_exempt
 @require_POST
 def chat_async(request):
     """
-    Async RAG chat endpoint — enqueues Celery task, returns task_id.
-
-    Request JSON:
-        {"message": "...", "history": [...]}
-
-    Response JSON:
-        {"success": true, "task_id": "abc-123", "status": "queued"}
-
-    Then poll: GET /api/chat/result/<task_id>/
+    POST /api/chat/async/
+    Enqueues a Celery task and returns {task_id} immediately.
+    Frontend polls GET /api/chat/result/<task_id>/ for the answer.
+    Rate limit: 10 req / 60 s per IP (stricter than sync).
     """
-    try:
-        data         = json.loads(request.body)
-        user_message = data.get("message", "").strip()
-        history      = data.get("history", [])
-
-        if not user_message:
-            return JsonResponse(
-                {"success": False, "reply": "Please enter a message."},
-                status=400,
-            )
-
-        session_id = request.session.get("chat_session_id")
-        if not session_id:
-            session_id = str(uuid.uuid4())
-            request.session["chat_session_id"] = session_id
-
-        # Enqueue Celery task
-        from chatbot.tasks import run_rag_pipeline
-        task = run_rag_pipeline.delay(
-            query=user_message,
-            history=history,
-            session_id=session_id,
+    if _check_rate_limit(request, limit=10, window=60):
+        return JsonResponse(
+            {'success': False, 'reply': 'Too many requests. Please wait a moment.'},
+            status=429,
         )
 
-        return JsonResponse({
-            "success": True,
-            "task_id": task.id,
-            "status":  "queued",
-        })
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'reply': 'Invalid JSON payload.'}, status=400)
 
-    except Exception as e:
-        logger.error(f"Async chat error: {e}", exc_info=True)
-        return JsonResponse({"success": False, "error": str(e)}, status=500)
+    cleaned, errors = validate_chat(data)
+    if errors:
+        first_err = next(iter(errors.values()))
+        return JsonResponse({'success': False, 'reply': first_err, 'errors': errors}, status=400)
+
+    session_id = _get_or_create_session(request)
+
+    from chatbot.tasks import run_rag_pipeline
+    task = run_rag_pipeline.delay(
+        query=cleaned['message'],
+        history=cleaned['history'],
+        session_id=session_id,
+    )
+
+    return JsonResponse({'success': True, 'task_id': task.id, 'status': 'queued'})
 
 
 @require_GET
 def chat_result(request, task_id):
     """
+    GET /api/chat/result/<task_id>/
     Poll for the result of an async chat task.
-
-    Response JSON (pending):
-        {"status": "pending"}
-
-    Response JSON (complete):
-        {"status": "success", "reply": str, "sources": [...]}
-
-    Response JSON (failed):
-        {"status": "failure", "reply": "fallback message"}
+    States: pending | processing | success | failure
     """
+    # Validate task_id format (UUID only — prevents probing arbitrary task IDs)
+    try:
+        uuid.UUID(task_id)
+    except ValueError:
+        return JsonResponse({'status': 'error', 'reply': 'Invalid task ID.'}, status=400)
+
     try:
         from celery.result import AsyncResult
         result = AsyncResult(task_id)
 
-        if result.state == "PENDING":
-            return JsonResponse({"status": "pending"})
-
-        elif result.state == "SUCCESS":
-            data = result.result
+        if result.state == 'PENDING':
+            return JsonResponse({'status': 'pending'})
+        elif result.state == 'STARTED':
+            return JsonResponse({'status': 'processing'})
+        elif result.state == 'SUCCESS':
+            d = result.result or {}
             return JsonResponse({
-                "status":       "success",
-                "reply":        data.get("reply", ""),
-                "sources":      data.get("sources", []),
-                "cached":       data.get("cached", False),
-                "chunks_found": data.get("chunks_found", 0),
+                'status':       'success',
+                'reply':        d.get('reply', ''),
+                'sources':      d.get('sources', []),
+                'cached':       d.get('cached', False),
+                'chunks_found': d.get('chunks_found', 0),
             })
-
-        elif result.state == "FAILURE":
+        elif result.state == 'FAILURE':
             return JsonResponse({
-                "status": "failure",
-                "reply": (
-                    "The request failed. Please contact us at "
-                    "info@anupambearings.com or call +91-98844-00741."
+                'status': 'failure',
+                'reply': (
+                    'The request failed. Please contact us at '
+                    'info@anupambearings.com or call +91-98844-00741.'
                 ),
             })
-
         else:
-            return JsonResponse({"status": result.state.lower()})
-
+            return JsonResponse({'status': result.state.lower()})
     except Exception as e:
-        logger.error(f"Result fetch error: {e}")
-        return JsonResponse({"status": "error", "error": str(e)}, status=500)
+        logger.error(f'chat_result error: {e}', exc_info=True)
+        return JsonResponse({'status': 'error', 'reply': str(e)}, status=500)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# HEALTH + STATS ENDPOINTS
-# ─────────────────────────────────────────────────────────────────────────────
+# ── HEALTH + STATS ────────────────────────────────────────────────────────────
 
 @require_GET
 def chat_health(request):
-    """
-    Health check for all RAG components.
-
-    GET /api/chat/health/
-
-    Response:
-        {
-            "ollama": {"healthy": bool, "model": str, ...},
-            "faiss":  {"exists": bool, "total_vectors": int, ...},
-            "redis":  {"healthy": bool},
-            "overall": "healthy" | "degraded" | "offline"
-        }
-    """
+    """GET /api/chat/health/ — overall system health."""
     from rag.llm_client import check_ollama_health
-    from rag.retriever import get_index_stats
+    from rag.retriever  import get_index_stats
 
-    ollama_health = check_ollama_health()
-    faiss_stats   = get_index_stats()
+    ollama = check_ollama_health()
+    faiss  = get_index_stats()
 
-    # Check Redis
-    redis_healthy = False
+    redis_ok = False
     try:
-        cache.set("health_check_ping", "pong", timeout=5)
-        redis_healthy = cache.get("health_check_ping") == "pong"
+        cache.set('_health_ping', 'pong', 5)
+        redis_ok = cache.get('_health_ping') == 'pong'
     except Exception:
         pass
 
-    # Overall health
-    if ollama_health["healthy"] and faiss_stats["exists"] and redis_healthy:
-        overall = "healthy"
-    elif ollama_health["healthy"]:
-        overall = "degraded"  # LLM works but RAG or cache is down
+    if ollama['healthy'] and faiss['exists'] and redis_ok:
+        overall = 'healthy'
+    elif ollama['healthy']:
+        overall = 'degraded'
     else:
-        overall = "offline"
+        overall = 'offline'
 
     return JsonResponse({
-        "ollama":  ollama_health,
-        "faiss":   faiss_stats,
-        "redis":   {"healthy": redis_healthy},
-        "overall": overall,
+        'ollama':  ollama,
+        'faiss':   faiss,
+        'redis':   {'healthy': redis_ok},
+        'overall': overall,
     })
 
 
 @require_GET
 def chat_stats(request):
-    """
-    RAG index statistics.
-    GET /api/chat/stats/
-    """
+    """GET /api/chat/stats/ — RAG index statistics."""
     from rag.retriever import get_index_stats
     return JsonResponse(get_index_stats())

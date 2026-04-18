@@ -44,6 +44,17 @@
       <li><a href="{% url 'contact:contact' %}">Contact</a></li>
     </ul>
 
+    <!-- Live product search -->
+    <div class="search-wrap" style="position:relative;">
+      <input
+        type="text"
+        id="product-search-input"
+        placeholder="Search products…"
+        autocomplete="off"
+        aria-label="Search products"
+      />
+      <div id="product-search-results" role="listbox" aria-label="Search results"></div>
+    </div>
     <a href="{% url 'contact:contact' %}" class="btn-primary nav-cta">Get a Quote</a>
 
     <button class="nav-hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false">

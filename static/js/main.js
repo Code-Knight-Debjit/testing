@@ -410,24 +410,81 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendMessage = async () => {
       const msg = chatInput.value.trim();
       if (!msg) return;
+
+      // Disable input while processing
       chatInput.value = '';
+      chatInput.disabled = true;
+      chatSend.disabled = true;
+
       addUserMessage(msg);
       chatHistory.push({ role: 'user', content: msg });
       const typingEl = showTyping();
+
       try {
-        const res = await fetch('/api/chat/', {
+        // Step 1: Enqueue async task — returns immediately with task_id
+        const enqueueRes = await fetch('/api/chat/async/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
           body: JSON.stringify({ message: msg, history: chatHistory }),
         });
-        const result = await res.json();
+
+        if (enqueueRes.status === 429) {
+          typingEl.remove();
+          addAssistantMessage("You're sending messages too quickly. Please wait a moment and try again.");
+          return;
+        }
+
+        const enqueueData = await enqueueRes.json();
+
+        if (!enqueueData.success || !enqueueData.task_id) {
+          typingEl.remove();
+          addAssistantMessage(enqueueData.reply || "Sorry, I couldn't process that. Please contact us directly.");
+          return;
+        }
+
+        // Step 2: Poll for result with exponential backoff
+        const taskId = enqueueData.task_id;
+        let reply = null;
+        let attempts = 0;
+        const maxAttempts = 30; // 30 × ~1.5s avg = ~45s max wait
+
+        while (attempts < maxAttempts) {
+          await new Promise(r => setTimeout(r, attempts < 5 ? 800 : 1500));
+          attempts++;
+
+          try {
+            const pollRes  = await fetch(`/api/chat/result/${taskId}/`);
+            const pollData = await pollRes.json();
+
+            if (pollData.status === 'success') {
+              reply = pollData.reply;
+              break;
+            } else if (pollData.status === 'failure') {
+              reply = "I encountered an error. Please contact us at info@anupambearings.com.";
+              break;
+            }
+            // 'pending' or 'processing' → keep polling
+          } catch {
+            // network blip — retry
+          }
+        }
+
         typingEl.remove();
-        const reply = result.reply || "Sorry, I couldn't process that. Please contact us directly.";
+
+        if (!reply) {
+          reply = "The response is taking too long. Please try again or contact us at +91-98844-00741.";
+        }
+
         addAssistantMessage(reply);
         chatHistory.push({ role: 'assistant', content: reply });
-      } catch {
+
+      } catch (err) {
         typingEl.remove();
         addAssistantMessage("I'm having connection issues. Please call us at +91-98844-00741.");
+      } finally {
+        chatInput.disabled = false;
+        chatSend.disabled  = false;
+        chatInput.focus();
       }
     };
 
@@ -514,3 +571,77 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
 });
+
+/* ── LIVE PRODUCT SEARCH ── */
+(function () {
+  const searchInput = document.getElementById('product-search-input');
+  const searchResults = document.getElementById('product-search-results');
+  if (!searchInput || !searchResults) return;
+
+  let debounceTimer;
+  let activeIndex = -1;
+
+  searchInput.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const q = searchInput.value.trim();
+    if (q.length < 2) { searchResults.style.display = 'none'; return; }
+    debounceTimer = setTimeout(() => fetchResults(q), 280);
+  });
+
+  searchInput.addEventListener('keydown', e => {
+    const items = searchResults.querySelectorAll('.search-result-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, items.length - 1);
+      items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, -1);
+      items.forEach((el, i) => el.classList.toggle('active', i === activeIndex));
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      items[activeIndex]?.click();
+    } else if (e.key === 'Escape') {
+      searchResults.style.display = 'none';
+      activeIndex = -1;
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+      searchResults.style.display = 'none';
+    }
+  });
+
+  async function fetchResults(q) {
+    try {
+      const res  = await fetch(`/products/search/?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      renderResults(data.results, q);
+    } catch { searchResults.style.display = 'none'; }
+  }
+
+  function renderResults(results, q) {
+    activeIndex = -1;
+    if (!results.length) {
+      searchResults.innerHTML = '<div class="search-no-result">No products found for "' + q + '"</div>';
+      searchResults.style.display = 'block';
+      return;
+    }
+    searchResults.innerHTML = results.map(r => `
+      <a href="${r.url}" class="search-result-item">
+        <div class="search-result-icon">${r.icon || '⚙️'}</div>
+        <div>
+          <div class="search-result-name">${highlight(r.name, q)}</div>
+          <div class="search-result-cat">${r.category}</div>
+        </div>
+      </a>
+    `).join('') + `<div class="search-result-footer"><a href="/products/search/?q=${encodeURIComponent(q)}">View all results →</a></div>`;
+    searchResults.style.display = 'block';
+  }
+
+  function highlight(text, q) {
+    const re = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    return text.replace(re, '<mark style="background:rgba(255,106,0,.2);color:inherit;border-radius:2px;">$1</mark>');
+  }
+}());

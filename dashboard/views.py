@@ -94,11 +94,16 @@ def product_list(request):
     if cat_filter:
         products = products.filter(category__slug=cat_filter)
     categories = Category.objects.all()
-    return render(request, 'dashboard/products.html', {
-        'products': products,
-        'categories': categories,
-        'q': q,
-        'cat_filter': cat_filter,
+    page_size = getattr(__import__("django.conf", fromlist=["settings"]).settings, "DASHBOARD_PAGE_SIZE", 20)
+    from django.core.paginator import Paginator
+    paginator = Paginator(products, page_size)
+    page_obj  = paginator.get_page(request.GET.get("page", 1))
+    return render(request, "dashboard/products.html", {
+        "products":    page_obj.object_list,
+        "page_obj":    page_obj,
+        "categories":  categories,
+        "q":           q,
+        "cat_filter":  cat_filter,
     })
 
 
@@ -245,9 +250,14 @@ def enquiry_list(request):
     enquiries = Enquiry.objects.select_related('product__category').order_by('-created_at')
     if status_filter:
         enquiries = enquiries.filter(status=status_filter)
-    return render(request, 'dashboard/enquiries.html', {
-        'enquiries': enquiries,
-        'status_filter': status_filter,
+    from django.core.paginator import Paginator
+    from django.conf import settings as _s
+    paginator = Paginator(enquiries, getattr(_s, "DASHBOARD_PAGE_SIZE", 20))
+    page_obj  = paginator.get_page(request.GET.get("page", 1))
+    return render(request, "dashboard/enquiries.html", {
+        "enquiries":     page_obj.object_list,
+        "page_obj":      page_obj,
+        "status_filter": status_filter,
     })
 
 
@@ -280,9 +290,14 @@ def message_list(request):
         messages = messages.filter(is_read=False)
     elif read_filter == 'read':
         messages = messages.filter(is_read=True)
-    return render(request, 'dashboard/messages.html', {
-        'messages': messages,
-        'read_filter': read_filter,
+    from django.core.paginator import Paginator
+    from django.conf import settings as _s
+    paginator = Paginator(messages, getattr(_s, "DASHBOARD_PAGE_SIZE", 20))
+    page_obj  = paginator.get_page(request.GET.get("page", 1))
+    return render(request, "dashboard/messages.html", {
+        "messages":    page_obj.object_list,
+        "page_obj":    page_obj,
+        "read_filter": read_filter,
     })
 
 
@@ -397,9 +412,130 @@ def rag_status(request):
         {'name': 'phi3',      'badge': None, 'badge_class': ''},
         {'name': 'qwen2.5',   'badge': None, 'badge_class': ''},
     ]
+    cli_commands = [
+        {'label': 'Build index (first run)',       'cmd': 'python manage.py ingest_rag_data'},
+        {'label': 'Rebuild + include DB products', 'cmd': 'python manage.py ingest_rag_data --rebuild --also-seed-products'},
+        {'label': 'Add single file',               'cmd': 'python manage.py ingest_rag_data --file data/knowledge_base/new.json'},
+        {'label': 'Check index stats',             'cmd': 'python manage.py ingest_rag_data --stats'},
+        {'label': 'Start Celery worker',           'cmd': 'celery -A anupam_bearings worker --loglevel=info'},
+        {'label': 'Start Ollama',                  'cmd': 'ollama serve'},
+    ]
     return render(request, 'dashboard/rag_status.html', {
         'index_stats':   index_stats,
         'ollama_health': ollama_health,
         'redis_ok':      redis_ok,
         'llm_models':    llm_models,
+        'cli_commands':  cli_commands,
     })
+
+
+# ── RAG ADMIN ACTIONS ─────────────────────────────────────
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@require_POST
+def rag_reindex(request):
+    """
+    POST /dashboard/rag/reindex/
+    Trigger a background RAG reindex from the dashboard UI.
+    Calls the ingest management command via Celery or subprocess.
+    """
+    mode = request.POST.get('mode', 'append')  # 'append' | 'rebuild'
+    rebuild = (mode == 'rebuild')
+
+    try:
+        from chatbot.tasks import ingest_documents_task
+        from rag.chunker import file_to_chunks, texts_to_chunks
+        from django.conf import settings as _s
+        from pathlib import Path
+
+        kb_dir = Path(getattr(_s, 'RAG_KNOWLEDGE_DIR', 'data/knowledge_base'))
+        all_chunks, all_metas = [], []
+
+        if kb_dir.exists():
+            for f in sorted(kb_dir.glob('**/*.json')) + sorted(kb_dir.glob('**/*.txt')):
+                try:
+                    c, m = file_to_chunks(str(f))
+                    all_chunks.extend(c)
+                    all_metas.extend(m)
+                except Exception:
+                    pass
+
+        # Also ingest products from DB
+        if request.POST.get('include_products') == '1':
+            from products.models import Product, Category
+            texts, metas = [], []
+            for p in Product.objects.select_related('category').all():
+                spec_str = ' | '.join(f'{k}: {v}' for k, v in (p.specifications or {}).items())
+                texts.append(f'Product: {p.name}\nCategory: {p.category.name}\nDescription: {p.description}\n{spec_str}'.strip())
+                metas.append({'source': 'product_database', 'title': p.name, 'category': p.category.name})
+            if texts:
+                extra_c, extra_m = texts_to_chunks(texts, metas)
+                all_chunks.extend(extra_c)
+                all_metas.extend(extra_m)
+
+        if not all_chunks:
+            return JsonResponse({'success': False, 'message': 'No documents found to index.'})
+
+        # Run as background task
+        task = ingest_documents_task.delay(all_chunks, all_metas, rebuild=rebuild)
+        return JsonResponse({
+            'success': True,
+            'task_id': task.id,
+            'message': f'Reindex started — {len(all_chunks)} chunks queued (mode: {"rebuild" if rebuild else "append"}).',
+            'chunks':  len(all_chunks),
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error: {str(e)}'})
+
+
+@login_required(login_url='/dashboard/login/')
+@staff_required
+@require_POST
+def rag_upload_document(request):
+    """
+    POST /dashboard/rag/upload/
+    Upload a .json, .txt, or .pdf file and immediately add it to the RAG index.
+    """
+    import tempfile, os
+    from pathlib import Path
+    from django.conf import settings as _s
+
+    uploaded_file = request.FILES.get('document')
+    if not uploaded_file:
+        return JsonResponse({'success': False, 'message': 'No file uploaded.'})
+
+    ext = Path(uploaded_file.name).suffix.lower()
+    if ext not in ('.json', '.txt', '.pdf'):
+        return JsonResponse({'success': False, 'message': 'Only .json, .txt, and .pdf files are supported.'})
+
+    if uploaded_file.size > 5 * 1024 * 1024:  # 5MB limit
+        return JsonResponse({'success': False, 'message': 'File too large. Maximum 5MB.'})
+
+    try:
+        from rag.chunker import file_to_chunks
+        from rag.retriever import add_documents
+        from django.conf import settings as _s
+
+        # Save to knowledge_base directory
+        kb_dir = Path(getattr(_s, 'RAG_KNOWLEDGE_DIR', 'data/knowledge_base'))
+        kb_dir.mkdir(parents=True, exist_ok=True)
+        save_path = kb_dir / uploaded_file.name
+
+        with open(save_path, 'wb') as f:
+            for chunk in uploaded_file.chunks():
+                f.write(chunk)
+
+        # Chunk and index immediately
+        chunks, metas = file_to_chunks(str(save_path))
+        if not chunks:
+            return JsonResponse({'success': False, 'message': 'No text could be extracted from the file.'})
+
+        total = add_documents(chunks, metas, rebuild=False)
+        return JsonResponse({
+            'success': True,
+            'message': f'"{uploaded_file.name}" uploaded and indexed. {len(chunks)} chunks added. Total vectors: {total}.',
+            'chunks':  len(chunks),
+            'total':   total,
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error processing file: {str(e)}'})

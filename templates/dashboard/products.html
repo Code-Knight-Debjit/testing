@@ -85,6 +85,7 @@
     </tbody>
   </table>
 </div>
+{% if page_obj %}{% include "includes/pagination.html" %}{% endif %}
 {% endblock %}
 
 {% block extra_js %}

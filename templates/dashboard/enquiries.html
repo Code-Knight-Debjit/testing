@@ -94,6 +94,7 @@
     <p id="enq-detail-msg" style="font-size:0.9rem;line-height:1.7;color:var(--muted);white-space:pre-wrap;"></p>
   </div>
 </div>
+{% if page_obj %}{% include "includes/pagination.html" %}{% endif %}
 {% endblock %}
 
 {% block extra_js %}

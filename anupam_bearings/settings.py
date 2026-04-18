@@ -114,12 +114,12 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # one task at a time per worker slot
 # ─────────────────────────────────────────────
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'BACKEND': 'django_redis.cache.RedisCache',          # ← django-redis backend
         'LOCATION': REDIS_URL,
         'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',  # ← now valid
         },
-        'TIMEOUT': 3600,  # 1 hour default TTL
+        'TIMEOUT': 3600,
     }
 }
 

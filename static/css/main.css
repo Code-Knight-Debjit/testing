@@ -1263,3 +1263,84 @@ textarea.form-input { min-height: 140px; resize: vertical; }
   background-size: 32px 32px;
   pointer-events: none;
 }
+
+/* ── LIVE SEARCH ── */
+.search-wrap { position: relative; }
+#product-search-input {
+  width: 220px;
+  padding: .5rem 1rem;
+  border: 1px solid rgba(226,191,176,.2);
+  border-radius: var(--radius-full);
+  background: rgba(255,255,255,.08);
+  backdrop-filter: blur(8px);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: .85rem;
+  outline: none;
+  transition: border-color .2s, width .3s;
+}
+#product-search-input:focus { border-color: var(--primary-container); width: 280px; }
+#product-search-input::placeholder { color: rgba(255,255,255,.4); }
+#product-search-results {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 320px;
+  background: var(--surface-container-lowest);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-float);
+  border: 1px solid rgba(226,191,176,.15);
+  z-index: 500;
+  overflow: hidden;
+}
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .75rem 1rem;
+  text-decoration: none;
+  color: var(--on-surface);
+  transition: background .12s;
+  border-bottom: 1px solid var(--border, rgba(0,0,0,.06));
+}
+.search-result-item:hover, .search-result-item.active { background: var(--surface-container-low); }
+.search-result-icon { font-size: 1.3rem; width: 36px; text-align: center; flex-shrink: 0; }
+.search-result-name { font-size: .875rem; font-weight: 600; }
+.search-result-cat  { font-size: .72rem; color: var(--secondary); }
+.search-no-result, .search-result-footer {
+  padding: .875rem 1rem;
+  font-size: .8rem;
+  color: var(--secondary);
+  text-align: center;
+}
+.search-result-footer a { color: var(--primary-container); text-decoration: none; }
+
+/* ── PAGINATION ── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  margin-top: var(--sp-6);
+  flex-wrap: wrap;
+}
+.page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-display);
+  font-size: .85rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--secondary);
+  background: var(--surface-container-highest);
+  border: 1px solid transparent;
+  transition: all .2s;
+}
+.page-btn:hover { background: var(--surface-container-low); color: var(--on-surface); }
+.page-btn.active { background: var(--gradient-primary); color: #fff; border-color: transparent; }
+.page-btn.disabled { opacity: .35; pointer-events: none; }

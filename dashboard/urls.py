@@ -37,7 +37,9 @@ urlpatterns = [
     path('chats/<str:session_id>/delete/', views.chat_delete_session, name='chat_delete'),
 
     # RAG
-    path('rag/', views.rag_status, name='rag_status'),
+    path('rag/',          views.rag_status,          name='rag_status'),
+    path('rag/reindex/', views.rag_reindex,          name='rag_reindex'),
+    path('rag/upload/',  views.rag_upload_document,  name='rag_upload'),
 
     # API
     path('api/notifications/',     views.notifications_api,       name='notifications_api'),
