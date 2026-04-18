@@ -53,8 +53,8 @@ def _hash_history(history: list) -> str:
     max_retries=2,
     default_retry_delay=3,
     name="chatbot.tasks.run_rag_pipeline",
-    time_limit=90,        # hard kill after 90s
-    soft_time_limit=75,   # raises SoftTimeLimitExceeded at 75s
+    time_limit=300,       # hard kill after 5 min (Ollama on CPU can need 2+ min)
+    soft_time_limit=240,  # raises SoftTimeLimitExceeded at 4 min
 )
 def run_rag_pipeline(self, query: str, history: list = None, session_id: str = "") -> dict:
     """

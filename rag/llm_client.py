@@ -1,51 +1,58 @@
 """
 rag/llm_client.py
 ─────────────────
-Handles all communication with the Ollama LLM API.
+LLM backend with three options (set LLM_BACKEND in .env):
+  - groq    → Groq API (llama3, free, 1–3s) ← RECOMMENDED for speed
+  - ollama  → Local Ollama (free, 60–180s on CPU, 3–8s on GPU)
+  - openai  → OpenAI-compatible endpoint (paid, very fast)
 
-Features:
-  - Semaphore limits max concurrent LLM calls to MAX_CONCURRENT (default 4)
-  - Configurable timeout (default 45s)
-  - Automatic retry on transient failures (up to MAX_RETRIES)
-  - Structured error responses — never crashes the caller
-  - Model is read from Django settings so it can be changed via .env
-
-Swapping models:
-  Set OLLAMA_MODEL in .env → "llama3", "mistral", "llama3.2", "gemma2", etc.
-  The model must already be pulled: ollama pull <model_name>
+Default: groq (fastest free option)
 """
 
-import os
-import time
-import logging
-import threading
-import requests
+import os, time, logging, threading, requests
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ── Concurrency guard: max 4 simultaneous Ollama calls
-# Increase if you have a beefy GPU; decrease if you share a small server
-MAX_CONCURRENT = int(os.getenv("OLLAMA_MAX_CONCURRENT", "4"))
-_semaphore = threading.Semaphore(MAX_CONCURRENT)
+# ── Config ────────────────────────────────────────────────────────────────────
+MAX_CONCURRENT = int(os.getenv('OLLAMA_MAX_CONCURRENT', '4'))
+_semaphore     = threading.Semaphore(MAX_CONCURRENT)
 
-# ── LLM call config
-LLM_TIMEOUT    = int(os.getenv("OLLAMA_TIMEOUT",    "45"))   # seconds per call
-MAX_RETRIES    = int(os.getenv("OLLAMA_MAX_RETRIES", "2"))    # retries on network error
-RETRY_DELAY    = float(os.getenv("OLLAMA_RETRY_DELAY", "1.5"))  # seconds between retries
+LLM_BACKEND    = os.getenv('LLM_BACKEND', 'groq').lower()
+LLM_TIMEOUT    = int(os.getenv('LLM_TIMEOUT', '30'))   # 30s covers all backends
+MAX_RETRIES    = int(os.getenv('LLM_MAX_RETRIES', '2'))
+RETRY_DELAY    = float(os.getenv('LLM_RETRY_DELAY', '1.0'))
+
+# ── Groq ──────────────────────────────────────────────────────────────────────
+GROQ_API_KEY   = os.getenv('GROQ_API_KEY', '')
+GROQ_MODEL     = os.getenv('GROQ_MODEL', 'llama3-8b-8192')
+GROQ_URL       = 'https://api.groq.com/openai/v1/chat/completions'
+
+# ── Ollama ────────────────────────────────────────────────────────────────────
+OLLAMA_URL_CFG = os.getenv('OLLAMA_URL', 'http://localhost:11434/api/generate')
+OLLAMA_MODEL   = os.getenv('OLLAMA_MODEL', 'gemma2:2b')  # default to small fast model
 
 
-def _get_ollama_config():
-    """Read Ollama URL + model from Django settings (or env fallback)."""
+def _get_settings():
     try:
         from django.conf import settings
-        url   = getattr(settings, "OLLAMA_URL",   "http://localhost:11434/api/generate")
-        model = getattr(settings, "OLLAMA_MODEL", "llama3")
+        return {
+            'backend':     getattr(settings, 'LLM_BACKEND',   LLM_BACKEND),
+            'groq_key':    getattr(settings, 'GROQ_API_KEY',  GROQ_API_KEY),
+            'groq_model':  getattr(settings, 'GROQ_MODEL',    GROQ_MODEL),
+            'ollama_url':  getattr(settings, 'OLLAMA_URL',    OLLAMA_URL_CFG),
+            'ollama_model':getattr(settings, 'OLLAMA_MODEL',  OLLAMA_MODEL),
+            'timeout':     getattr(settings, 'LLM_TIMEOUT',   LLM_TIMEOUT),
+        }
     except Exception:
-        url   = os.getenv("OLLAMA_URL",   "http://localhost:11434/api/generate")
-        model = os.getenv("OLLAMA_MODEL", "llama3")
-    return url, model
+        return {
+            'backend': LLM_BACKEND, 'groq_key': GROQ_API_KEY,
+            'groq_model': GROQ_MODEL, 'ollama_url': OLLAMA_URL_CFG,
+            'ollama_model': OLLAMA_MODEL, 'timeout': LLM_TIMEOUT,
+        }
 
+
+# ── PUBLIC INTERFACE ──────────────────────────────────────────────────────────
 
 def call_llm(
     prompt: str,
@@ -53,151 +60,170 @@ def call_llm(
     max_tokens: int = 512,
     model_override: Optional[str] = None,
 ) -> str:
-    """
-    Send a prompt to Ollama and return the response text.
+    cfg = _get_settings()
 
-    Args:
-        prompt:         Full formatted prompt string.
-        temperature:    0.0 = deterministic, 1.0 = creative.
-                        0.3 is good for factual Q&A.
-        max_tokens:     Maximum tokens in the response.
-        model_override: Override the model for this call only.
-                        Useful for testing without changing settings.
-
-    Returns:
-        The LLM response string, or a safe error message on failure.
-    """
-    url, model = _get_ollama_config()
-    if model_override:
-        model = model_override
-
-    payload = {
-        "model":  model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature":   temperature,
-            "num_predict":   max_tokens,
-            "stop":          ["User:", "User Question:"],  # prevent role bleed
-        },
-    }
-
-    # ── Acquire semaphore (blocks if MAX_CONCURRENT calls already running)
-    logger.debug(f"Waiting for LLM semaphore (max_concurrent={MAX_CONCURRENT})")
-    acquired = _semaphore.acquire(timeout=LLM_TIMEOUT)
+    acquired = _semaphore.acquire(timeout=cfg['timeout'])
     if not acquired:
-        logger.warning("LLM semaphore timeout — too many concurrent requests")
-        return _offline_fallback("concurrency_timeout")
-
+        return _fallback('concurrency_timeout')
     try:
-        return _call_with_retry(url, payload)
+        backend = cfg['backend']
+        if backend == 'groq':
+            return _call_groq(prompt, temperature, max_tokens, cfg, model_override)
+        elif backend == 'ollama':
+            return _call_ollama(prompt, temperature, max_tokens, cfg, model_override)
+        else:
+            logger.error(f"Unknown LLM_BACKEND: {backend}. Use 'groq' or 'ollama'.")
+            return _fallback('unknown_backend')
     finally:
         _semaphore.release()
 
 
-def _call_with_retry(url: str, payload: dict) -> str:
-    """Attempt the Ollama HTTP call with up to MAX_RETRIES retries."""
-    last_error = None
+# ── GROQ BACKEND (1–3 seconds, free) ─────────────────────────────────────────
+
+def _call_groq(prompt, temperature, max_tokens, cfg, model_override):
+    api_key = cfg['groq_key']
+    if not api_key:
+        logger.error("GROQ_API_KEY not set. Get one free at console.groq.com")
+        # Fall back to Ollama if key missing
+        logger.warning("Falling back to Ollama since GROQ_API_KEY is missing.")
+        return _call_ollama(prompt, temperature, max_tokens, cfg, model_override)
+
+    model   = model_override or cfg['groq_model']
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type':  'application/json',
+    }
+    payload = {
+        'model': model,
+        'messages': [{'role': 'user', 'content': prompt}],
+        'max_tokens':  max_tokens,
+        'temperature': temperature,
+        'stream':      False,
+    }
 
     for attempt in range(MAX_RETRIES + 1):
         try:
             if attempt > 0:
-                logger.info(f"Retrying Ollama call (attempt {attempt + 1}/{MAX_RETRIES + 1})")
                 time.sleep(RETRY_DELAY * attempt)
-
-            response = requests.post(
-                url,
-                json=payload,
-                timeout=LLM_TIMEOUT,
-                headers={"Content-Type": "application/json"},
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                text   = result.get("response", "").strip()
-                if text:
-                    logger.debug(f"LLM response ({len(text)} chars) OK")
-                    return text
-                else:
-                    logger.warning("Ollama returned empty response")
-                    return _offline_fallback("empty_response")
-
-            elif response.status_code == 404:
-                # Model not found — don't retry
-                logger.error(f"Ollama model not found: {payload['model']}")
-                return _offline_fallback("model_not_found", payload["model"])
-
+            r = requests.post(GROQ_URL, headers=headers, json=payload, timeout=cfg['timeout'])
+            if r.status_code == 200:
+                text = r.json()['choices'][0]['message']['content'].strip()
+                logger.info(f"Groq response OK ({len(text)} chars, model={model})")
+                return text
+            elif r.status_code == 429:
+                logger.warning("Groq rate limit hit — retrying")
+                time.sleep(2 * (attempt + 1))
+            elif r.status_code == 401:
+                logger.error("Groq API key invalid")
+                return _fallback('auth_error')
             else:
-                logger.warning(f"Ollama HTTP {response.status_code}: {response.text[:200]}")
-                last_error = f"HTTP {response.status_code}"
-
-        except requests.exceptions.ConnectionError as e:
-            logger.warning(f"Ollama connection error (attempt {attempt + 1}): {e}")
-            last_error = "connection_error"
-
+                logger.warning(f"Groq HTTP {r.status_code}: {r.text[:200]}")
         except requests.exceptions.Timeout:
-            logger.warning(f"Ollama timeout after {LLM_TIMEOUT}s (attempt {attempt + 1})")
-            last_error = "timeout"
+            logger.warning(f"Groq timeout (attempt {attempt+1})")
+        except requests.exceptions.ConnectionError as e:
+            logger.warning(f"Groq connection error: {e}")
 
-        except Exception as e:
-            logger.error(f"Unexpected LLM error: {e}", exc_info=True)
-            last_error = str(e)
-            break  # Non-transient error — don't retry
-
-    logger.error(f"All Ollama retries failed. Last error: {last_error}")
-    return _offline_fallback(last_error)
+    return _fallback('groq_failed')
 
 
-def _offline_fallback(reason: str = "unknown", detail: str = "") -> str:
-    """Return a helpful human-readable error message."""
-    if reason == "connection_error":
-        return (
-            "Our AI assistant is temporarily offline. "
-            "For immediate help, please call +91-98844-00741 (Bengaluru) "
-            "or +91-98400-88509 (Chennai), or email info@anupambearings.com."
-        )
-    elif reason == "timeout":
-        return (
-            "The response is taking too long. Please try a shorter question, "
-            "or contact us directly at info@anupambearings.com."
-        )
-    elif reason == "model_not_found":
-        return (
-            f"AI model '{detail}' is not available. "
-            "Please contact our team directly at info@anupambearings.com."
-        )
-    elif reason == "concurrency_timeout":
-        return (
-            "Our AI assistant is busy right now. "
-            "Please try again in a moment, or contact us at +91-98844-00741."
-        )
-    else:
-        return (
-            "I encountered an issue processing your request. "
-            "Please contact us at info@anupambearings.com or call +91-98844-00741."
-        )
+# ── OLLAMA BACKEND (local, slower on CPU) ─────────────────────────────────────
 
+def _call_ollama(prompt, temperature, max_tokens, cfg, model_override):
+    url   = cfg['ollama_url']
+    model = model_override or cfg['ollama_model']
+
+    payload = {
+        'model':  model,
+        'prompt': prompt,
+        'stream': False,
+        'options': {
+            'temperature': temperature,
+            'num_predict': max_tokens,
+            'stop':        ['User:', 'User Question:'],
+        },
+    }
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            if attempt > 0:
+                time.sleep(RETRY_DELAY * attempt)
+            r = requests.post(url, json=payload, timeout=cfg['timeout'])
+            if r.status_code == 200:
+                text = r.json().get('response', '').strip()
+                if text:
+                    return text
+                return _fallback('empty_response')
+            elif r.status_code == 404:
+                logger.error(f"Ollama model '{model}' not found. Run: ollama pull {model}")
+                return _fallback('model_not_found', model)
+        except requests.exceptions.ConnectionError:
+            logger.warning(f"Ollama offline (attempt {attempt+1})")
+        except requests.exceptions.Timeout:
+            logger.warning(f"Ollama timeout after {cfg['timeout']}s (attempt {attempt+1})")
+
+    return _fallback('connection_error')
+
+
+# ── FALLBACK MESSAGES ─────────────────────────────────────────────────────────
+
+def _fallback(reason: str, detail: str = '') -> str:
+    base = 'Please contact us at info@anupambearings.com or call +91-98844-00741.'
+    messages = {
+        'connection_error':    f'Our AI assistant is temporarily offline. {base}',
+        'groq_failed':         f'Our AI service is temporarily unavailable. {base}',
+        'auth_error':          f'AI configuration error. {base}',
+        'concurrency_timeout': f'Our AI assistant is busy right now. Please try again in a moment.',
+        'empty_response':      f'I received an empty response. {base}',
+        'model_not_found':     f"AI model '{detail}' is not available. {base}",
+        'unknown_backend':     f'AI configuration error. {base}',
+    }
+    return messages.get(reason, f'I encountered an error. {base}')
+
+
+# ── HEALTH CHECK ──────────────────────────────────────────────────────────────
 
 def check_ollama_health() -> dict:
-    """
-    Quick health check for Ollama service.
-    Returns {"healthy": bool, "model": str, "error": str|None}
-    """
-    url, model = _get_ollama_config()
-    # Check the tags endpoint (list of models)
-    base_url = url.rsplit("/api/", 1)[0]
-    try:
-        r = requests.get(f"{base_url}/api/tags", timeout=5)
-        if r.status_code == 200:
-            models = [m["name"] for m in r.json().get("models", [])]
-            model_available = any(model in m for m in models)
-            return {
-                "healthy": True,
-                "model": model,
-                "model_available": model_available,
-                "available_models": models,
-                "error": None,
-            }
-        return {"healthy": False, "model": model, "error": f"HTTP {r.status_code}"}
-    except Exception as e:
-        return {"healthy": False, "model": model, "error": str(e)}
+    """Health check — works for both Groq and Ollama."""
+    cfg = _get_settings()
+
+    if cfg['backend'] == 'groq':
+        if not cfg['groq_key']:
+            return {'healthy': False, 'model': cfg['groq_model'],
+                    'backend': 'groq', 'error': 'GROQ_API_KEY not set'}
+        try:
+            r = requests.get(
+                'https://api.groq.com/openai/v1/models',
+                headers={'Authorization': f'Bearer {cfg["groq_key"]}'},
+                timeout=5,
+            )
+            if r.status_code == 200:
+                models = [m['id'] for m in r.json().get('data', [])]
+                return {
+                    'healthy': True, 'backend': 'groq',
+                    'model': cfg['groq_model'],
+                    'model_available': cfg['groq_model'] in models,
+                    'available_models': [m for m in models if 'llama' in m or 'gemma' in m or 'mixtral' in m],
+                    'error': None,
+                }
+            return {'healthy': False, 'backend': 'groq', 'model': cfg['groq_model'],
+                    'error': f'HTTP {r.status_code}'}
+        except Exception as e:
+            return {'healthy': False, 'backend': 'groq', 'model': cfg['groq_model'], 'error': str(e)}
+
+    else:  # ollama
+        base = cfg['ollama_url'].rsplit('/api/', 1)[0]
+        try:
+            r = requests.get(f'{base}/api/tags', timeout=5)
+            if r.status_code == 200:
+                models = [m['name'] for m in r.json().get('models', [])]
+                return {
+                    'healthy': True, 'backend': 'ollama',
+                    'model': cfg['ollama_model'],
+                    'model_available': any(cfg['ollama_model'] in m for m in models),
+                    'available_models': models,
+                    'error': None,
+                }
+            return {'healthy': False, 'backend': 'ollama', 'model': cfg['ollama_model'],
+                    'error': f'HTTP {r.status_code}'}
+        except Exception as e:
+            return {'healthy': False, 'backend': 'ollama', 'model': cfg['ollama_model'], 'error': str(e)}

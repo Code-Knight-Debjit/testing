@@ -20,7 +20,7 @@ INSTALLED_APPS = [
     'contact',
     'chatbot',
     'dashboard',
-    "django_celery_beat",
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [
@@ -134,5 +134,61 @@ EMBEDDING_MODEL     = config('EMBEDDING_MODEL',     default='all-MiniLM-L6-v2')
 
 # LLM concurrency and timeouts
 OLLAMA_MAX_CONCURRENT = config('OLLAMA_MAX_CONCURRENT', default=4,  cast=int)
-OLLAMA_TIMEOUT        = config('OLLAMA_TIMEOUT',        default=45, cast=int)
+OLLAMA_TIMEOUT        = config('OLLAMA_TIMEOUT',        default=120, cast=int)
 OLLAMA_MAX_RETRIES    = config('OLLAMA_MAX_RETRIES',    default=2,  cast=int)
+
+# ─────────────────────────────────────────────
+# RATE LIMITING
+# ─────────────────────────────────────────────
+RATELIMIT_USE_CACHE = 'default'
+RATELIMIT_ENABLE    = True
+
+# ─────────────────────────────────────────────
+# SECURITY HARDENING
+# ─────────────────────────────────────────────
+SECURE_BROWSER_XSS_FILTER   = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS             = 'DENY'
+
+# ─────────────────────────────────────────────
+# PAGINATION
+# ─────────────────────────────────────────────
+DASHBOARD_PAGE_SIZE = 20
+PUBLIC_PRODUCTS_PAGE_SIZE = 12
+
+# ─────────────────────────────────────────────
+# LOGGING
+# ─────────────────────────────────────────────
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] {levelname} {name}: {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class':     'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django':  {'handlers': ['console'], 'level': 'WARNING'},
+        'rag':     {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        'chatbot': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+    },
+}
+
+# ─────────────────────────────────────────────
+# LLM BACKEND SELECTION
+# ─────────────────────────────────────────────
+# Options: 'groq' (fast, free) | 'ollama' (local, slow on CPU)
+LLM_BACKEND   = config('LLM_BACKEND',   default='groq')
+LLM_TIMEOUT   = config('LLM_TIMEOUT',   default=30, cast=int)
+LLM_MAX_RETRIES = config('LLM_MAX_RETRIES', default=2, cast=int)
+
+# Groq (get free key at console.groq.com)
+GROQ_API_KEY  = config('GROQ_API_KEY',  default='')
+GROQ_MODEL    = config('GROQ_MODEL',    default='llama3-8b-8192')
