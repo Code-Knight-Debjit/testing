@@ -27,7 +27,6 @@
 <!-- ── SCROLL PROGRESS ── -->
 <div id="scroll-progress"></div>
 
-{% block intro %}{% endblock %}
 
 <!-- ── NAVIGATION ── -->
 <nav id="navbar" role="navigation" aria-label="Main navigation">
@@ -35,7 +34,7 @@
     <a href="{% url 'core:home' %}" class="nav-logo" aria-label="Anupam Bearings Home">
       <img src="{% static 'images/logo.png' %}" alt="Anupam Bearings" />
     </a>
-
+    
     <ul class="nav-links" role="list">
       <li><a href="{% url 'core:home' %}">Home</a></li>
       <li><a href="{% url 'core:about' %}">About</a></li>
@@ -43,25 +42,16 @@
       <li><a href="{% url 'core:gallery' %}">Gallery</a></li>
       <li><a href="{% url 'contact:contact' %}">Contact</a></li>
     </ul>
-
-    <!-- Live product search -->
-    <div class="search-wrap" style="position:relative;">
-      <input
-        type="text"
-        id="product-search-input"
-        placeholder="Search products…"
-        autocomplete="off"
-        aria-label="Search products"
-      />
-      <div id="product-search-results" role="listbox" aria-label="Search results"></div>
-    </div>
-    <a href="{% url 'contact:contact' %}" class="btn-primary nav-cta">Get a Quote</a>
-
+    
+    {% comment %} <a href="{% url 'contact:contact' %}" class="btn-primary nav-cta">Get a Quote</a> {% endcomment %}
+    
     <button class="nav-hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false">
       <span></span><span></span><span></span>
     </button>
   </div>
 </nav>
+
+{% block intro %}{% endblock %}
 
 <!-- ── MOBILE NAV OVERLAY ── -->
 <div class="nav-mobile" id="mobile-nav" role="dialog" aria-label="Mobile navigation">
@@ -71,7 +61,7 @@
   <a href="{% url 'products:list' %}">Products</a>
   <a href="{% url 'core:gallery' %}">Gallery</a>
   <a href="{% url 'contact:contact' %}">Contact</a>
-  <a href="{% url 'contact:contact' %}" class="btn-primary" style="margin-top:1rem;">Get a Quote</a>
+  {% comment %} <a href="{% url 'contact:contact' %}" class="btn-primary" style="margin-top:1rem;">Get a Quote</a> {% endcomment %}
 </div>
 
 <!-- ── MAIN CONTENT ── -->
@@ -110,7 +100,7 @@
           <li><a href="{% url 'core:about' %}">About Us</a></li>
           <li><a href="{% url 'core:gallery' %}">Gallery</a></li>
           <li><a href="{% url 'contact:contact' %}">Contact</a></li>
-          <li><a href="{% url 'contact:contact' %}">Get a Quote</a></li>
+          {% comment %} <li><a href="{% url 'contact:contact' %}">Get a Quote</a></li> {% endcomment %}
         </ul>
       </div>
       <div>
