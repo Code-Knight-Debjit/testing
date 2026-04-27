@@ -5,6 +5,7 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
@@ -12,13 +13,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy requirements first (better layer caching)
 COPY requirements.txt .
 
-RUN pip install --upgrade pip && \
-    pip install --prefix=/install --no-cache-dir -r requirements.txt
+# Create virtual environment
+RUN python -m venv /venv
+ENV PATH="/venv/bin:$PATH"
 
-# Preload embedding model
+# Install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Preload embedding model (fixes cold start)
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
 
 # ──────────────────────────────────────────────
 # Stage 2 – Runtime
@@ -30,24 +38,40 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Install only runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libjpeg62-turbo \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /install /usr/local
+# Copy virtual environment from builder
+COPY --from=builder /venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+# Copy project files
 COPY . .
 
-RUN mkdir -p data/faiss_index data/knowledge_base staticfiles media/products media/categories
+# Create required directories
+RUN mkdir -p \
+    data/faiss_index \
+    data/knowledge_base \
+    staticfiles \
+    media/products \
+    media/categories
 
+# Collect static files (fail if broken — no silent ignore)
 RUN python manage.py collectstatic --noinput
 
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# Create non-root user
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
 USER appuser
 
 EXPOSE 8000
 
+# Start application
 CMD ["sh", "-c", "\
 python manage.py migrate --noinput && \
 gunicorn anupam_bearings.wsgi:application \
