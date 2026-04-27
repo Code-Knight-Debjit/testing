@@ -5,7 +5,6 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
@@ -13,18 +12,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first (better layer caching)
 COPY requirements.txt .
 
-# Create virtual environment
+# Create virtualenv
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 
-# Install Python dependencies
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Preload embedding model (fixes cold start)
+# Preload embedding model
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 
@@ -38,18 +35,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install only runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libjpeg62-turbo \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy virtual environment from builder
+# Copy venv
 COPY --from=builder /venv /venv
 ENV PATH="/venv/bin:$PATH"
 
-# Copy project files
+# Copy project
 COPY . .
 
 # Create required directories
@@ -60,8 +56,9 @@ RUN mkdir -p \
     media/products \
     media/categories
 
-# Collect static files (fail if broken — no silent ignore)
-RUN python manage.py collectstatic --noinput
+# 🔥 CLEAN STATIC BUILD
+RUN rm -rf staticfiles/* && \
+    python manage.py collectstatic --noinput
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && \
@@ -71,8 +68,9 @@ USER appuser
 
 EXPOSE 8000
 
-# Start application
+# 🚀 Runtime: makemigrations + migrate + start server
 CMD ["sh", "-c", "\
+python manage.py makemigrations --noinput && \
 python manage.py migrate --noinput && \
 gunicorn anupam_bearings.wsgi:application \
   --bind 0.0.0.0:8000 \
