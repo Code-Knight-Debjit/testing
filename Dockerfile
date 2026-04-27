@@ -1,58 +1,56 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Anupam Bearings — Production Dockerfile
-# Multi-stage build for minimal image size
-# ─────────────────────────────────────────────────────────────────────────────
-
-FROM python:3.11-slim AS base
-
-# System deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    libpq-dev \
-    libgomp1 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# ──────────────────────────────────────────────
+# Stage 1 – Builder
+# ──────────────────────────────────────────────
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# ── Dependencies stage ───────────────────────────────────────────────────────
-FROM base AS deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    libjpeg-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 
-# Install Python deps with no cache to reduce image size
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --prefix=/install --no-cache-dir -r requirements.txt
 
-# Pre-download the embedding model so workers start instantly
-# (removes cold-start delay on first RAG query)
+# Preload embedding model
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
-# ── Application stage ────────────────────────────────────────────────────────
-FROM deps AS app
+# ──────────────────────────────────────────────
+# Stage 2 – Runtime
+# ──────────────────────────────────────────────
+FROM python:3.11-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libjpeg62-turbo \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /install /usr/local
 COPY . .
 
-# Create required directories
-RUN mkdir -p \
-    data/faiss_index \
-    data/knowledge_base \
-    staticfiles \
-    media/products \
-    media/categories
+RUN mkdir -p data/faiss_index data/knowledge_base staticfiles media/products media/categories
 
-# Collect static files
-RUN python manage.py collectstatic --noinput 2>/dev/null || true
+RUN python manage.py collectstatic --noinput
 
-# Non-root user for security
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
 
-CMD ["gunicorn", "anupam_bearings.wsgi:application", \
-     "--bind", "0.0.0.0:8000", \
-     "--workers", "3", \
-     "--timeout", "120"]
+CMD ["sh", "-c", "\
+python manage.py migrate --noinput && \
+gunicorn anupam_bearings.wsgi:application \
+  --bind 0.0.0.0:8000 \
+  --workers 3 \
+  --timeout 120"]
