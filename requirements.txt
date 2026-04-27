@@ -32,3 +32,4 @@ django-celery-beat>=2.0
 django-ratelimit>=4.1.0
 pytest>=8.0.0
 pytest-django>=4.8.0
+sentence_transformers>=2.7.0
